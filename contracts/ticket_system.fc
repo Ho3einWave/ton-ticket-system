@@ -1,37 +1,61 @@
 #include "imports/stdlib.fc";
+#include "imports/params.fc";
+#include "imports/jetton-utils.fc";
 const op::buy_ticket = "op::buy_ticket"c; ;;
+const op::jetton_notify = 0x7362d09c; ;;
 
-const int error::invalid_signature = 33;
+const int error::not_enough_o1 = 400;
+const int error::not_enough_omini = 401;
+const int error::no_ticket_left = 402;
 const int error::invalid_subwallet_id = 34;
 const int error::invalid_created_at = 35;
 const int error::already_executed = 36;
 const int error::invalid_message_to_send = 37;
 const int error::invalid_timeout = 38;
 
-const int KEY_SIZE = 13;
-const int SIGNATURE_SIZE = 512;
-const int PUBLIC_KEY_SIZE = 256;
-const int SUBWALLET_ID_SIZE = 32;
-const int TIMESTAMP_SIZE = 64;
-const int TIMEOUT_SIZE = 22; ;; 2^22 / 60 / 60 / 24 - up to ~48 days
+const int minimum_o1_value = 1000000000; ;; 1 o1
+const int minimum_omini_value = 2000000000; ;; 2 omini
 
 
-(int , cell , slice) load_data() inline {
+
+(int , cell , slice, slice, slice, cell) load_data() inline {
     slice ds = get_data().begin_parse();
     int total_sale = ds~load_uint(32);
     cell users = ds~load_dict();
     slice hoster_address = ds~load_msg_addr();
-    return (total_sale , users , hoster_address);
+    slice o1_master = ds~load_msg_addr();
+    slice omini_master = ds~load_msg_addr();
+    cell jetton_wallet_code = ds~load_ref();
+    
+    return (total_sale, users, hoster_address,o1_master,omini_master, jetton_wallet_code);
 }
 
-() save_data(int total_sale, cell users , slice hoster_address) impure {
-    set_data(begin_cell().store_uint(total_sale , 32).store_dict(users).store_slice(hoster_address).end_cell());
+() save_data(int total_sale, cell users , slice hoster_address,slice o1_master,slice omini_master, cell jetton_wallet_code) impure {
+    set_data(begin_cell().store_uint(total_sale , 32).store_dict(users).store_slice(hoster_address).store_slice(o1_master).store_slice(omini_master).store_ref(jetton_wallet_code).end_cell());
 }
+
+
+
+() save_total_sale(int sale) impure {
+    (int total_sale, cell users , slice hoster_address,slice o1_master,slice omini_master, cell jetton_wallet_code) =  load_data();
+    set_data(begin_cell().store_uint(sale , 32).store_dict(users).store_slice(hoster_address).store_slice(o1_master).store_slice(omini_master).store_ref(jetton_wallet_code).end_cell());
+}
+
+() save_users(cell new_users) impure {
+    (int total_sale, cell users , slice hoster_address,slice o1_master,slice omini_master, cell jetton_wallet_code) =  load_data();
+    set_data(begin_cell().store_uint(total_sale , 32).store_dict(new_users).store_slice(hoster_address).store_slice(o1_master).store_slice(omini_master).store_ref(jetton_wallet_code).end_cell());
+}
+
+
+
+
+
 
 
 
 
 () recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    
     ;; just receive ton coins
     if(in_msg_body.slice_empty?()){
         return ();
@@ -48,13 +72,72 @@ const int TIMEOUT_SIZE = 22; ;; 2^22 / 60 / 60 / 24 - up to ~48 days
 
 
 
-    slice sender_address = cs~load_msg_addr();
-    int op = in_msg_body~load_op();
+    slice sender_address = cs~load_msg_addr(); ;;jetton wallet
+    int op = in_msg_body~load_uint(32);
     int query_id = in_msg_body~load_uint(64);
+    
+    ;; if (op == op::buy_ticket){
+        
+    ;;     total_sale += 1;
+    ;; }
+    ~dump(msg_value);
+    if (op == op::jetton_notify) {
+        (int total_sale, cell users , slice hoster_address,slice o1_master, slice omini_master, cell jetton_wallet_code) =  load_data();
+        
+        throw_unless(error::no_ticket_left, total_sale <= 1000);
+       
 
+        int amount = in_msg_body~load_coins();
+        slice org_sender_addr = in_msg_body~load_msg_addr();
+        
 
-    if (op == op::buy_ticket){
+        slice O1wallet = calculate_user_jetton_wallet_address(my_address(), o1_master, jetton_wallet_code);
+        slice Ominiwallet = calculate_user_jetton_wallet_address(my_address(), omini_master, jetton_wallet_code);
+        if (equal_slice_bits(sender_address,O1wallet)){
+
+            ;; Jetton O1 received 
+            ~dump(1);
+            ~dump(amount);
+            ~dump(1337);
+            throw_unless(error::not_enough_o1, amount >= minimum_o1_value);
+            users~udict_set(256, total_sale, org_sender_addr);
+            ~dump(1338);
+            save_users(users);
+            total_sale += 1;
+            ~dump("total_sale"c);
+            ~dump(total_sale);
+            save_total_sale(total_sale);
+        }
+        if (equal_slice_bits(sender_address,Ominiwallet)){
+            ;; Jetton O-Mini received 
+            ~dump(2);
+            ~dump(amount);
+            throw_unless(error::not_enough_omini, amount >= minimum_omini_value);
+            users~udict_set(256, total_sale, org_sender_addr);
+            save_users(users);
+            total_sale += 1;
+            ~dump("total_sale"c);
+            ~dump(total_sale);
+            save_total_sale(total_sale);
+        }
 
     }
 
+}
+
+
+
+int get_total_sale() method_id {
+    (int total_sale, cell users , slice hoster_address,slice o1_master,slice omini_master, cell jetton_wallet_code) =  load_data();
+    return total_sale;
+}
+
+slice get_hoster_addr() method_id {
+    (int total_sale, cell users , slice hoster_address,slice o1_master,slice omini_master, cell jetton_wallet_code) =  load_data();
+    return hoster_address;
+}
+
+cell get_users() method_id {
+    (int total_sale, cell users , slice hoster_address,slice o1_master,slice omini_master, cell jetton_wallet_code) =  load_data();
+    return users;
 }

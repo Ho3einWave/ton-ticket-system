@@ -1,13 +1,37 @@
-import { Address, beginCell, Cell, Contract, contractAddress, ContractProvider, Sender, SendMode } from '@ton/core';
+import { Address, beginCell, Builder, Cell, Contract, contractAddress, ContractProvider, Dictionary, DictionaryValue, Sender, SendMode, Slice } from '@ton/core';
 
-export type TicketSystemConfig = {};
+export type TicketSystemConfig = {
+    total_sale: bigint,
+    users: Dictionary<bigint, Address>,
+    hoster_address: Address,
+    o1_master: Address,
+    omini_master: Address,
+    jetton_wallet_code: Cell
+};
+
+export const addressDictionaryValue: DictionaryValue<Address> = {
+    serialize: function (address: Address, builder: Builder) {
+        builder
+            .storeAddress(address)
+    },
+    parse: function (address: Slice): Address {
+        return address.loadAddress()
+    },
+}
 
 export function ticketSystemConfigToCell(config: TicketSystemConfig): Cell {
-    return beginCell().endCell();
+    return beginCell()
+        .storeUint(config.total_sale, 32)
+        .storeDict(config.users)
+        .storeAddress(config.hoster_address)
+        .storeAddress(config.o1_master)
+        .storeAddress(config.omini_master)
+        .storeRef(config.jetton_wallet_code)
+        .endCell();
 }
 
 export class TicketSystem implements Contract {
-    constructor(readonly address: Address, readonly init?: { code: Cell; data: Cell }) {}
+    constructor(readonly address: Address, readonly init?: { code: Cell; data: Cell }) { }
 
     static createFromAddress(address: Address) {
         return new TicketSystem(address);
@@ -25,5 +49,24 @@ export class TicketSystem implements Contract {
             sendMode: SendMode.PAY_GAS_SEPARATELY,
             body: beginCell().endCell(),
         });
+    }
+
+    async getTotalSale(provider: ContractProvider): Promise<bigint> {
+        const { stack } = await provider.get('get_total_sale', [])
+        return stack.readBigNumber()
+    }
+    async getHosterAddress(provider: ContractProvider): Promise<Address> {
+        const { stack } = await provider.get('get_hoster_addr', [])
+        return stack.readAddress()
+    }
+    async getLastAddress(provider: ContractProvider): Promise<Address> {
+        const { stack } = await provider.get('get_last_addr', [])
+        return stack.readAddress()
+    }
+    async getAllUsers(provider: ContractProvider) {
+        const { stack } = await provider.get('get_users', [])
+        const dict = Dictionary.loadDirect(Dictionary.Keys.BigUint(256), addressDictionaryValue, stack.readCellOpt())
+        return dict
+
     }
 }
