@@ -80,11 +80,9 @@ const int minimum_omini_value = 2000000000; ;; 2 omini
         
     ;;     total_sale += 1;
     ;; }
-    ~dump(msg_value);
     if (op == op::jetton_notify) {
         (int total_sale, cell users , slice hoster_address,slice o1_master, slice omini_master, cell jetton_wallet_code) =  load_data();
         
-        throw_unless(error::no_ticket_left, total_sale <= 1000);
        
 
         int amount = in_msg_body~load_coins();
@@ -94,30 +92,53 @@ const int minimum_omini_value = 2000000000; ;; 2 omini
         slice O1wallet = calculate_user_jetton_wallet_address(my_address(), o1_master, jetton_wallet_code);
         slice Ominiwallet = calculate_user_jetton_wallet_address(my_address(), omini_master, jetton_wallet_code);
         if (equal_slice_bits(sender_address,O1wallet)){
-
             ;; Jetton O1 received 
-            ~dump(1);
-            ~dump(amount);
-            ~dump(1337);
             throw_unless(error::not_enough_o1, amount >= minimum_o1_value);
-            users~udict_set(256, total_sale, org_sender_addr);
-            ~dump(1338);
+            
+            int buy_ticket_count = amount / minimum_o1_value;
+            throw_unless(error::no_ticket_left, total_sale + buy_ticket_count <= 1000);
+
+
+            (int workchain, int addr) = parse_std_addr(org_sender_addr);
+            (slice val, int key) = users.udict_get?(256, addr);
+
+            if (key){
+                int tickets_count = val~load_uint(32);
+                slice total_bought_tickets = begin_cell().store_uint(tickets_count + buy_ticket_count, 32).end_cell().begin_parse();
+                users~udict_set(256, addr, total_bought_tickets);
+
+            } else {
+                slice total_bought_tickets = begin_cell().store_uint(buy_ticket_count, 32).end_cell().begin_parse();
+                users~udict_set(256, addr, total_bought_tickets);
+            }
+
             save_users(users);
-            total_sale += 1;
-            ~dump("total_sale"c);
-            ~dump(total_sale);
+            total_sale += buy_ticket_count;
             save_total_sale(total_sale);
         }
         if (equal_slice_bits(sender_address,Ominiwallet)){
-            ;; Jetton O-Mini received 
-            ~dump(2);
-            ~dump(amount);
+            
             throw_unless(error::not_enough_omini, amount >= minimum_omini_value);
-            users~udict_set(256, total_sale, org_sender_addr);
+            int buy_ticket_count = amount / minimum_omini_value;
+            throw_unless(error::no_ticket_left, total_sale + buy_ticket_count <= 1000);
+
+
+            (int workchain, int addr) = parse_std_addr(org_sender_addr);
+            (slice val, int key) = users.udict_get?(256, addr);
+
+            if (key){
+
+                int tickets_count = val~load_uint(32);
+
+                slice total_bought_tickets = begin_cell().store_uint(tickets_count + buy_ticket_count,32).end_cell().begin_parse();
+                users~udict_set(256, addr, total_bought_tickets);
+            } else {
+                slice total_bought_tickets = begin_cell().store_uint(buy_ticket_count,32).end_cell().begin_parse();
+                users~udict_set(256, addr, total_bought_tickets);
+            }
+
             save_users(users);
-            total_sale += 1;
-            ~dump("total_sale"c);
-            ~dump(total_sale);
+            total_sale += buy_ticket_count;
             save_total_sale(total_sale);
         }
 
@@ -140,4 +161,16 @@ slice get_hoster_addr() method_id {
 cell get_users() method_id {
     (int total_sale, cell users , slice hoster_address,slice o1_master,slice omini_master, cell jetton_wallet_code) =  load_data();
     return users;
+}
+
+int get_user_tickets(slice user_addr) method_id {
+    (_,cell users,_,_,_,_) =  load_data();
+    (int workchain, int addr) = parse_std_addr(user_addr);
+    (slice val, int key) = users.udict_get?(256, addr);
+    if(key){
+        int ticket_count = val~load_uint(32);
+        return ticket_count;
+    } else {
+        return 0;
+    }
 }

@@ -1,21 +1,21 @@
-import { Address, beginCell, Builder, Cell, Contract, contractAddress, ContractProvider, Dictionary, DictionaryValue, Sender, SendMode, Slice } from '@ton/core';
+import { Address, beginCell, Builder, Cell, Contract, contractAddress, ContractProvider, Dictionary, DictionaryValue, Sender, SendMode, Slice, TupleBuilder } from '@ton/core';
 
 export type TicketSystemConfig = {
     total_sale: bigint,
-    users: Dictionary<bigint, Address>,
+    users: Dictionary<bigint, bigint>,
     hoster_address: Address,
     o1_master: Address,
     omini_master: Address,
     jetton_wallet_code: Cell
 };
 
-export const addressDictionaryValue: DictionaryValue<Address> = {
-    serialize: function (address: Address, builder: Builder) {
+export const addressDictionaryValue: DictionaryValue<bigint> = {
+    serialize: function (num: bigint, builder: Builder) {
         builder
-            .storeAddress(address)
+            .storeUint(num, 32)
     },
-    parse: function (address: Slice): Address {
-        return address.loadAddress()
+    parse: function (address: Slice): bigint {
+        return BigInt(address.loadUint(32))
     },
 }
 
@@ -68,5 +68,11 @@ export class TicketSystem implements Contract {
         const dict = Dictionary.loadDirect(Dictionary.Keys.BigUint(256), addressDictionaryValue, stack.readCellOpt())
         return dict
 
+    }
+    async getUserTickets(provider: ContractProvider, address: Address) {
+        const tb = new TupleBuilder()
+        tb.writeAddress(address)
+        const { stack } = await provider.get('get_user_tickets', tb.build())
+        return stack.readBigNumberOpt()
     }
 }

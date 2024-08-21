@@ -69,7 +69,7 @@ describe('TicketSystem', () => {
             omini_master: OMINIminter.address,
             jetton_wallet_code: wallet_code[0],
             total_sale: 0n,
-            users: Dictionary.empty<bigint, Address>(Dictionary.Keys.BigInt(1000), Dictionary.Values.Address())
+            users: Dictionary.empty<bigint, bigint>(Dictionary.Keys.BigInt(1000), Dictionary.Values.BigUint(32))
 
         }, code))
         contractO1Wallet = blockchain.openContract(JettonWallet.createFromAddress(
@@ -104,7 +104,7 @@ describe('TicketSystem', () => {
         expect(fromNano(deployerOMINIBalance)).toEqual("1000000")
     })
     it('should send jettons to contract jetton wallet', async () => {
-        let sentAmount = toNano('2');
+        let sentAmount = toNano('2.5');
         let forwardAmount = toNano('0.4')
         await deployerO1Wallet.sendTransfer(
             deployer.getSender(),
@@ -118,6 +118,7 @@ describe('TicketSystem', () => {
             // @ts-ignore
             null
         )
+
         await deployerOMINIWallet.sendTransfer(
             deployer.getSender(),
             toNano("0.5"),
@@ -131,16 +132,12 @@ describe('TicketSystem', () => {
             null
         )
 
-        expect(fromNano(await contractO1Wallet.getJettonBalance())).toEqual("2")
-        expect(fromNano(await contractOMINIWallet.getJettonBalance())).toEqual("2")
-        const addr = await ticketSystem.getHosterAddress()
-        console.log("HOSTER", addr.toString({ bounceable: false }))
-        console.log("WALLET O1", contractO1Wallet.address.toString({ bounceable: false }))
-        console.log("WALLET O-mini", contractOMINIWallet.address.toString({ bounceable: false }))
+        expect(fromNano(await contractO1Wallet.getJettonBalance())).toEqual("2.5")
+        expect(fromNano(await contractOMINIWallet.getJettonBalance())).toEqual("2.5")
         const num = await ticketSystem.getTotalSale()
-        console.log(num)
-        const dict = await ticketSystem.getAllUsers()
-        console.log(dict)
+        expect(num).toEqual(3n)
+        const ticketCount = await ticketSystem.getUserTickets(deployer.address)
+        expect(ticketCount).toEqual(3n)
     })
     it("should return total sale of 0 at first", async () => {
         const num = await ticketSystem.getTotalSale()
@@ -148,6 +145,7 @@ describe('TicketSystem', () => {
     })
     it("should be able to buy 1 ticket", async () => {
         const totalSale = await ticketSystem.getTotalSale()
+        expect(totalSale).toEqual(0n);
         let sentAmount = toNano('1');
         let forwardAmount = toNano('0.4')
         const transactions = await deployerO1Wallet.sendTransfer(
@@ -167,9 +165,8 @@ describe('TicketSystem', () => {
             to: ticketSystem.address,
             success: true
         })
-        const users = await ticketSystem.getAllUsers()
-        const ticket = users.get(totalSale)
-        expect(ticket).toEqualAddress(deployer.address)
+        const totalSaleAfter = await ticketSystem.getTotalSale()
+        expect(totalSaleAfter).toEqual(1n)
     })
 
 
