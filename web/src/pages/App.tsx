@@ -51,7 +51,7 @@ const App = () => {
     useEffect(() => {
         setupTicketSystem();
         setOptions({ actionsConfiguration: { modals: ['before', 'error', 'success'] } });
-    }, []);
+    }, [setOptions, setupTicketSystem]);
     const buttonText = walletConnected ? 'BUY' : 'CONNECT WALLET';
     return (
         <div className="max-w-[400px] mx-auto py-10">
